@@ -4,7 +4,8 @@
   ],
   "functions": {
     "api/**/*.js": {
-      "runtime": "nodejs20.x"
+      "runtime": "nodejs20.x",
+      "external": ["xlsx", "nodemailer", "bcryptjs"]
     }
   }
 }
