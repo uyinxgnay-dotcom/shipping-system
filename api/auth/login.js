@@ -2,12 +2,13 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+const JWT_SECRET = process.env.JWT_SECRET || 'default-secret';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const supabase = supabaseUrl && supabaseKey 
+  ? createClient(supabaseUrl, supabaseKey)
+  : null;
 
 export default async function handler(req, res) {
   // CORS
@@ -28,6 +29,10 @@ export default async function handler(req, res) {
 
     if (!username || !password) {
       return res.status(400).json({ error: '请输入用户名和密码' });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ error: '数据库配置错误' });
     }
 
     // 查询用户
@@ -65,6 +70,6 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: '登录失败' });
+    res.status(500).json({ error: '登录失败: ' + error.message });
   }
 }
