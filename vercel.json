@@ -1,0 +1,10 @@
+{
+  "rewrites": [
+    { "source": "/api/auth/login", "destination": "/api/auth/login" },
+    { "source": "/api/orders", "destination": "/api/orders/index" },
+    { "source": "/api/orders/{id}", "destination": "/api/orders/[id]" },
+    { "source": "/api/users", "destination": "/api/users/index" },
+    { "source": "/api/users/{id}", "destination": "/api/users/index" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

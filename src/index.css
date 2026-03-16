@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.gradient-bg {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.card {
+  @apply bg-white rounded-xl shadow-md p-5;
+}
+
+.btn-primary {
+  @apply w-full py-3 px-4 bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-semibold rounded-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-secondary {
+  @apply py-2 px-4 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-all;
+}
+
+.btn-danger {
+  @apply py-2 px-4 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 transition-all;
+}
+
+.btn-success {
+  @apply py-2 px-4 bg-green-500 text-white font-medium rounded-lg hover:bg-green-600 transition-all;
+}
+
+.input {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent;
+}
+
+.label {
+  @apply block text-sm text-gray-600 mb-1;
+}
+
+.status-badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.status-quote {
+  @apply bg-orange-100 text-orange-800;
+}
+
+.status-ordered {
+  @apply bg-green-100 text-green-800;
+}
