@@ -1,7 +1,5 @@
-import jwt from 'jsonwebtoken';
+import { verifyToken } from '../_utils/auth.js';
 import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
-import https from 'https';
 
 export const config = {
   runtime: 'edge',
@@ -9,18 +7,8 @@ export const config = {
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
-const JWT_SECRET = process.env.JWT_SECRET || 'default-secret';
 const DINGTALK_WEBHOOK = process.env.DINGTALK_WEBHOOK;
 const DINGTALK_SECRET = process.env.DINGTALK_SECRET;
-
-function verifyToken(auth) {
-  if (!auth || !auth.startsWith('Bearer ')) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET);
-  } catch {
-    return null;
-  }
-}
 
 // 发送钉钉消息
 async function sendDingtalk(message) {
@@ -63,7 +51,7 @@ export default async function handler(req) {
   }
 
   const authHeader = req.headers.get('Authorization');
-  const user = verifyToken(authHeader);
+  const user = await verifyToken(authHeader);
   if (!user) {
     return new Response(JSON.stringify({ error: '请先登录' }), { status: 401, headers });
   }

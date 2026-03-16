@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import { SignJWT } from 'jose';
 import { createClient } from '@supabase/supabase-js';
 
 export const config = {
@@ -79,12 +79,13 @@ export default async function handler(req) {
       return new Response(JSON.stringify({ error: '用户名或密码错误' }), { status: 401, headers });
     }
 
-    // 生成 JWT
-    const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    // 生成 JWT (使用 jose)
+    const secret = new TextEncoder().encode(JWT_SECRET);
+    const token = await new SignJWT({ id: user.id, username: user.username, role: user.role })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('7d')
+      .sign(secret);
 
     return new Response(JSON.stringify({
       token,
