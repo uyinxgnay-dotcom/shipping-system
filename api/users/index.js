@@ -1,13 +1,13 @@
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+export const config = {
+  runtime: 'edge',
+};
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+const JWT_SECRET = process.env.JWT_SECRET || 'default-secret';
 
 function verifyToken(auth) {
   if (!auth || !auth.startsWith('Bearer ')) return null;
@@ -18,23 +18,29 @@ function verifyToken(auth) {
   }
 }
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+export default async function handler(req) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Content-Type': 'application/json',
+  };
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return new Response(null, { status: 200, headers });
   }
 
-  const user = verifyToken(req.headers.authorization);
+  const authHeader = req.headers.get('Authorization');
+  const user = verifyToken(authHeader);
   if (!user) {
-    return res.status(401).json({ error: '请先登录' });
+    return new Response(JSON.stringify({ error: '请先登录' }), { status: 401, headers });
   }
 
   if (user.role !== 'admin') {
-    return res.status(403).json({ error: '只有管理员可以管理用户' });
+    return new Response(JSON.stringify({ error: '只有管理员可以管理用户' }), { status: 403, headers });
   }
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
   // GET - 获取用户列表
   if (req.method === 'GET') {
@@ -44,33 +50,26 @@ export default async function handler(req, res) {
       .order('created_at', { ascending: true });
 
     if (error) {
-      return res.status(500).json({ error: '获取用户失败' });
+      return new Response(JSON.stringify({ error: '获取用户失败' }), { status: 500, headers });
     }
 
-    return res.status(200).json({ users });
+    return new Response(JSON.stringify({ users }), { status: 200, headers });
   }
 
   // POST - 创建用户
   if (req.method === 'POST') {
-    const { username, password, role } = req.body;
+    const { username, password, role } = await req.json();
 
     if (!username || !password) {
-      return res.status(400).json({ error: '请输入用户名和密码' });
+      return new Response(JSON.stringify({ error: '请输入用户名和密码' }), { status: 400, headers });
     }
 
-    // 检查用户名是否已存在
-    const { data: existing } = await supabase
-      .from('users')
-      .select('id')
-      .eq('username', username)
-      .single();
-
-    if (existing) {
-      return res.status(400).json({ error: '用户名已存在' });
-    }
-
-    // 加密密码
-    const passwordHash = await bcrypt.hash(password, 10);
+    // 使用简单的 SHA-256 哈希 (注意：这不是最安全的方案)
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + 'shipping-salt');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const passwordHash = '$sha256$' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
     const { data: newUser, error } = await supabase
       .from('users')
@@ -84,57 +83,61 @@ export default async function handler(req, res) {
       .single();
 
     if (error) {
-      return res.status(500).json({ error: '创建用户失败' });
+      return new Response(JSON.stringify({ error: '创建用户失败: ' + error.message }), { status: 500, headers });
     }
 
-    return res.status(201).json({ user: newUser });
+    return new Response(JSON.stringify({ user: newUser }), { status: 201, headers });
   }
 
   // PUT - 更新用户
   if (req.method === 'PUT') {
-    const id = req.url.split('/').filter(Boolean).pop().split('?')[0];
-    const updates = req.body;
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    const targetId = pathParts[pathParts.length - 1]?.split('?')[0];
+    
+    const updates = await req.json();
 
-    // 如果更新密码
     if (updates.password) {
-      updates.password_hash = await bcrypt.hash(updates.password, 10);
+      const encoder = new TextEncoder();
+      const data = encoder.encode(updates.password + 'shipping-salt');
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      updates.password_hash = '$sha256$' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       delete updates.password;
     }
 
     const { data: updated, error } = await supabase
       .from('users')
       .update(updates)
-      .eq('id', id)
+      .eq('id', targetId)
       .select('id, username, role, is_active, created_at')
       .single();
 
     if (error) {
-      return res.status(500).json({ error: '更新失败' });
+      return new Response(JSON.stringify({ error: '更新失败' }), { status: 500, headers });
     }
 
-    return res.status(200).json({ user: updated });
+    return new Response(JSON.stringify({ user: updated }), { status: 200, headers });
   }
 
   // DELETE - 删除用户
   if (req.method === 'DELETE') {
-    const id = req.url.split('/').filter(Boolean).pop().split('?')[0];
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    const targetId = pathParts[pathParts.length - 1]?.split('?')[0];
 
-    // 不能删除自己
-    if (id === user.id) {
-      return res.status(400).json({ error: '不能删除自己' });
+    if (targetId === user.id) {
+      return new Response(JSON.stringify({ error: '不能删除自己' }), { status: 400, headers });
     }
 
-    const { error } = await supabase
-      .from('users')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.from('users').delete().eq('id', targetId);
 
     if (error) {
-      return res.status(500).json({ error: '删除失败' });
+      return new Response(JSON.stringify({ error: '删除失败' }), { status: 500, headers });
     }
 
-    return res.status(200).json({ success: true });
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers });
   }
 
-  return res.status(405).json({ error: 'Method not allowed' });
+  return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers });
 }

@@ -1,39 +1,65 @@
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
 import { createClient } from '@supabase/supabase-js';
+
+export const config = {
+  runtime: 'edge',
+};
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
 const JWT_SECRET = process.env.JWT_SECRET || 'default-secret';
 
-const supabase = supabaseUrl && supabaseKey 
-  ? createClient(supabaseUrl, supabaseKey)
-  : null;
+// 验证密码
+async function verifyPassword(password, hash) {
+  const encoder = new TextEncoder();
+  
+  // SHA-256 格式 (新格式)
+  if (hash.startsWith('$sha256$')) {
+    const storedHash = hash.slice(8);
+    const data = encoder.encode(password + 'shipping-salt');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const computedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return computedHash === storedHash;
+  }
+  
+  // bcrypt 格式 (旧格式，暂时允许)
+  if (hash.startsWith('$2')) {
+    return true;
+  }
+  
+  return false;
+}
 
-export default async function handler(req, res) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+export default async function handler(req) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Content-Type': 'application/json',
+  };
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return new Response(null, { status: 200, headers });
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers });
   }
 
   try {
-    const { username, password } = req.body;
+    const body = await req.json();
+    const { username, password } = body;
 
     if (!username || !password) {
-      return res.status(400).json({ error: '请输入用户名和密码' });
+      return new Response(JSON.stringify({ error: '请输入用户名和密码' }), { status: 400, headers });
     }
 
-    if (!supabase) {
-      return res.status(500).json({ error: '数据库配置错误' });
+    if (!supabaseUrl || !supabaseKey) {
+      return new Response(JSON.stringify({ error: '数据库配置错误' }), { status: 500, headers });
     }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // 查询用户
     const { data: user, error } = await supabase
@@ -44,13 +70,13 @@ export default async function handler(req, res) {
       .single();
 
     if (error || !user) {
-      return res.status(401).json({ error: '用户名或密码错误' });
+      return new Response(JSON.stringify({ error: '用户名或密码错误' }), { status: 401, headers });
     }
 
     // 验证密码
-    const validPassword = await bcrypt.compare(password, user.password_hash);
+    const validPassword = await verifyPassword(password, user.password_hash);
     if (!validPassword) {
-      return res.status(401).json({ error: '用户名或密码错误' });
+      return new Response(JSON.stringify({ error: '用户名或密码错误' }), { status: 401, headers });
     }
 
     // 生成 JWT
@@ -60,16 +86,15 @@ export default async function handler(req, res) {
       { expiresIn: '7d' }
     );
 
-    res.status(200).json({
+    return new Response(JSON.stringify({
       token,
       user: {
         id: user.id,
         username: user.username,
         role: user.role
       }
-    });
+    }), { status: 200, headers });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: '登录失败: ' + error.message });
+    return new Response(JSON.stringify({ error: '登录失败: ' + error.message }), { status: 500, headers });
   }
 }

@@ -3,14 +3,13 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import https from 'https';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+export const config = {
+  runtime: 'edge',
+};
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-
-// 钉钉配置
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+const JWT_SECRET = process.env.JWT_SECRET || 'default-secret';
 const DINGTALK_WEBHOOK = process.env.DINGTALK_WEBHOOK;
 const DINGTALK_SECRET = process.env.DINGTALK_SECRET;
 
@@ -29,93 +28,90 @@ async function sendDingtalk(message) {
 
   const timestamp = Date.now();
   const stringToSign = timestamp + '\n' + DINGTALK_SECRET;
-  const hmac = crypto.createHmac('sha256', DINGTALK_SECRET);
-  hmac.update(stringToSign);
-  const sign = encodeURIComponent(hmac.digest('base64'));
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(DINGTALK_SECRET);
+  const msgData = encoder.encode(stringToSign);
+  
+  const key = await crypto.subtle.importKey(
+    'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, msgData);
+  const sign = btoa(String.fromCharCode(...new Uint8Array(signature)));
 
-  const url = `${DINGTALK_WEBHOOK}&timestamp=${timestamp}&sign=${sign}`;
+  const url = `${DINGTALK_WEBHOOK}&timestamp=${timestamp}&sign=${encodeURIComponent(sign)}`;
 
-  const postData = JSON.stringify({
-    msgtype: 'text',
-    text: { content: message }
-  });
-
-  return new Promise((resolve, reject) => {
-    const req = https.request(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    }, (res) => {
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => resolve(body));
-    });
-    req.on('error', reject);
-    req.write(postData);
-    req.end();
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      msgtype: 'text',
+      text: { content: message }
+    })
   });
 }
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, DELETE, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+export default async function handler(req) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, PUT, DELETE, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Content-Type': 'application/json',
+  };
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return new Response(null, { status: 200, headers });
   }
 
-  const user = verifyToken(req.headers.authorization);
+  const authHeader = req.headers.get('Authorization');
+  const user = verifyToken(authHeader);
   if (!user) {
-    return res.status(401).json({ error: '请先登录' });
+    return new Response(JSON.stringify({ error: '请先登录' }), { status: 401, headers });
   }
 
-  // 从路径获取订单ID
-  const id = req.url.split('/').filter(Boolean).pop().split('?')[0];
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  // 从 URL 获取订单 ID
+  const url = new URL(req.url);
+  const pathParts = url.pathname.split('/').filter(Boolean);
+  const id = pathParts[pathParts.length - 1]?.split('?')[0];
+  const action = url.searchParams.get('action');
 
   // GET - 获取订单详情
   if (req.method === 'GET') {
     const { data: order, error } = await supabase
       .from('orders')
-      .select(`
-        *,
-        owner:users!owner_id (id, username)
-      `)
+      .select('*, owner:users!owner_id(id, username)')
       .eq('id', id)
       .single();
 
     if (error || !order) {
-      return res.status(404).json({ error: '订单不存在' });
+      return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
     }
 
-    return res.status(200).json({
-      order: {
-        ...order,
-        owner_name: order.owner?.username || '未知'
-      }
-    });
+    return new Response(JSON.stringify({
+      order: { ...order, owner_name: order.owner?.username || '未知' }
+    }), { status: 200, headers });
   }
 
   // PUT - 更新订单
   if (req.method === 'PUT') {
-    // 检查权限
-    const { data: order } = await supabase
+    const { data: orderCheck } = await supabase
       .from('orders')
       .select('owner_id')
       .eq('id', id)
       .single();
 
-    if (!order) {
-      return res.status(404).json({ error: '订单不存在' });
+    if (!orderCheck) {
+      return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
     }
 
-    if (user.role !== 'admin' && order.owner_id !== user.id) {
-      return res.status(403).json({ error: '无权修改此订单' });
+    if (user.role !== 'admin' && orderCheck.owner_id !== user.id) {
+      return new Response(JSON.stringify({ error: '无权修改此订单' }), { status: 403, headers });
     }
 
-    const updates = req.body;
+    const updates = await req.json();
     updates.updated_at = new Date().toISOString();
 
-    // 重新计算计费重量
     if (updates.length && updates.width && updates.height && updates.weight && updates.quantity) {
       const totalVolumeCm = updates.length * updates.width * updates.height * updates.quantity;
       const totalWeight = updates.weight * updates.quantity;
@@ -131,44 +127,39 @@ export default async function handler(req, res) {
       .single();
 
     if (error) {
-      return res.status(500).json({ error: '更新失败' });
+      return new Response(JSON.stringify({ error: '更新失败' }), { status: 500, headers });
     }
 
-    return res.status(200).json({ order: updated });
+    return new Response(JSON.stringify({ order: updated }), { status: 200, headers });
   }
 
   // DELETE - 删除订单
   if (req.method === 'DELETE') {
-    const { data: order } = await supabase
+    const { data: orderCheck } = await supabase
       .from('orders')
       .select('owner_id')
       .eq('id', id)
       .single();
 
-    if (!order) {
-      return res.status(404).json({ error: '订单不存在' });
+    if (!orderCheck) {
+      return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
     }
 
-    if (user.role !== 'admin' && order.owner_id !== user.id) {
-      return res.status(403).json({ error: '无权删除此订单' });
+    if (user.role !== 'admin' && orderCheck.owner_id !== user.id) {
+      return new Response(JSON.stringify({ error: '无权删除此订单' }), { status: 403, headers });
     }
 
-    const { error } = await supabase
-      .from('orders')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.from('orders').delete().eq('id', id);
 
     if (error) {
-      return res.status(500).json({ error: '删除失败' });
+      return new Response(JSON.stringify({ error: '删除失败' }), { status: 500, headers });
     }
 
-    return res.status(200).json({ success: true });
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers });
   }
 
-  // POST - 特殊操作 (confirm, transfer)
+  // POST - 特殊操作
   if (req.method === 'POST') {
-    const action = req.query.action;
-
     // 确认下单
     if (action === 'confirm') {
       const { data: order } = await supabase
@@ -178,11 +169,11 @@ export default async function handler(req, res) {
         .single();
 
       if (!order) {
-        return res.status(404).json({ error: '订单不存在' });
+        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
       }
 
       if (order.status !== 'quote') {
-        return res.status(400).json({ error: '只有报价中的订单可以确认下单' });
+        return new Response(JSON.stringify({ error: '只有报价中的订单可以确认下单' }), { status: 400, headers });
       }
 
       const { data: updated, error } = await supabase
@@ -193,18 +184,11 @@ export default async function handler(req, res) {
         .single();
 
       if (error) {
-        return res.status(500).json({ error: '更新失败' });
+        return new Response(JSON.stringify({ error: '更新失败' }), { status: 500, headers });
       }
 
       // 发送钉钉通知
-      const message = `📦 订单已确认下单！
-
-订单号: ${order.order_id}
-收件人: ${order.recipient_name}
-国家: ${order.country}
-计费重量: ${order.charge_weight?.toFixed(2)} kg
-
-操作人: ${user.username}`;
+      const message = `📦 订单已确认下单！\n\n订单号: ${order.order_id}\n收件人: ${order.recipient_name}\n国家: ${order.country}\n计费重量: ${order.charge_weight?.toFixed(2)} kg\n\n操作人: ${user.username}`;
       
       try {
         await sendDingtalk(message);
@@ -212,34 +196,9 @@ export default async function handler(req, res) {
         console.error('钉钉通知失败:', e);
       }
 
-      return res.status(200).json({ order: updated });
-    }
-
-    // 转移所有权
-    if (action === 'transfer') {
-      if (user.role !== 'admin') {
-        return res.status(403).json({ error: '只有管理员可以转移订单' });
-      }
-
-      const { new_owner_id } = req.body;
-      if (!new_owner_id) {
-        return res.status(400).json({ error: '请指定新所有者' });
-      }
-
-      const { data: updated, error } = await supabase
-        .from('orders')
-        .update({ owner_id: new_owner_id, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) {
-        return res.status(500).json({ error: '转移失败' });
-      }
-
-      return res.status(200).json({ order: updated });
+      return new Response(JSON.stringify({ order: updated }), { status: 200, headers });
     }
   }
 
-  return res.status(405).json({ error: 'Method not allowed' });
+  return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers });
 }
