@@ -7,6 +7,17 @@ export const config = {
 
 const JWT_SECRET = process.env.JWT_SECRET || 'default-secret';
 
+async function verifyToken(auth) {
+  if (!auth || !auth.startsWith('Bearer ')) return null;
+  try {
+    const secret = new TextEncoder().encode(JWT_SECRET);
+    const { payload } = await jwtVerify(auth.slice(7), secret);
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 async function hashPassword(password) {
   const encoder = new TextEncoder();
   const data = encoder.encode(password + 'shipping-salt');
@@ -47,14 +58,12 @@ export default async function handler(req) {
   }
 
   try {
-    // 验证 token
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ error: '未登录' }), { status: 401, headers });
     }
 
-    const secret = new TextEncoder().encode(JWT_SECRET);
-    const { payload: user } = await jwtVerify(authHeader.slice(7), secret);
+    const user = await verifyToken(authHeader);
 
     const body = await req.json();
     const { currentPassword, newPassword, userId, resetPassword } = body;

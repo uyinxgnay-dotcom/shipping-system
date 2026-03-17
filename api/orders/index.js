@@ -1,12 +1,22 @@
-import { verifyToken } from '../_utils/auth.js';
+import { jwtVerify } from 'jose';
 import { createClient } from '@supabase/supabase-js';
 
 export const config = {
   runtime: 'edge',
 };
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+const JWT_SECRET = process.env.JWT_SECRET || 'default-secret';
+
+async function verifyToken(auth) {
+  if (!auth || !auth.startsWith('Bearer ')) return null;
+  try {
+    const secret = new TextEncoder().encode(JWT_SECRET);
+    const { payload } = await jwtVerify(auth.slice(7), secret);
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 export default async function handler(req) {
   const headers = {
@@ -26,6 +36,8 @@ export default async function handler(req) {
     return new Response(JSON.stringify({ error: '请先登录' }), { status: 401, headers });
   }
 
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   // GET - 获取订单列表
