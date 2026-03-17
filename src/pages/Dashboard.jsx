@@ -43,14 +43,15 @@ export default function Dashboard() {
         <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
           <h1 className="text-white font-bold text-lg">📦 发货管理系统</h1>
           <div className="flex items-center gap-4">
-            <span className="text-white/80 text-sm">
-              {user?.username} {user?.role === 'admin' && '(管理员)'}
-            </span>
+            <Link to="/profile" className="text-white/80 hover:text-white text-sm">
+              👤 {user?.username}
+            </Link>
+            {user?.role === 'admin' && <span className="text-yellow-300 text-xs">👑</span>}
             <button
               onClick={logout}
               className="text-white/80 hover:text-white text-sm"
             >
-              退出登录
+              退出
             </button>
           </div>
         </div>

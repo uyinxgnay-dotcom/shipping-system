@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import NewOrder from './pages/NewOrder'
 import OrderDetail from './pages/OrderDetail'
 import Users from './pages/Users'
+import Profile from './pages/Profile'
 
 // 受保护的路由
 function PrivateRoute({ children, adminOnly = false }) {
@@ -51,6 +52,11 @@ function AppRoutes() {
       <Route path="/users" element={
         <PrivateRoute adminOnly>
           <Users />
+        </PrivateRoute>
+      } />
+      <Route path="/profile" element={
+        <PrivateRoute>
+          <Profile />
         </PrivateRoute>
       } />
     </Routes>

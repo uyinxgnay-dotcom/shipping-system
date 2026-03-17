@@ -61,12 +61,15 @@ export default async function handler(req) {
         order_id: data.order_id,
         status: data.status || 'quote',
         owner_id: user.id,
+        // 货物信息
+        boxes: data.boxes || [],
         length: data.length,
         width: data.width,
         height: data.height,
         weight: data.weight,
         quantity: data.quantity,
         charge_weight: data.charge_weight,
+        // 收件人信息
         recipient_name: data.recipient_name,
         country: data.country,
         province: data.province,

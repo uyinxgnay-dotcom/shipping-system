@@ -76,8 +76,31 @@ export default function Users() {
     }
   }
 
+  const handleResetPassword = async (userId) => {
+    if (!confirm('确定要重置该用户的密码为 123456 吗？')) return
+    
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ userId, resetPassword: true })
+      })
+      
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      
+      alert('✅ 密码已重置为 123456')
+    } catch (err) {
+      alert('❌ ' + err.message)
+    }
+  }
+
   const handleDeleteUser = async (userId) => {
-    if (!confirm('确定要删除这个用户吗？')) return
+    if (!confirm('确定要删除这个用户吗？该用户创建的订单将保留。')) return
     
     try {
       const token = localStorage.getItem('token')
@@ -130,8 +153,8 @@ export default function Users() {
         {loading ? (
           <div className="text-center text-white py-10">加载中...</div>
         ) : (
-          <div className="card">
-            <table className="w-full">
+          <div className="card overflow-x-auto">
+            <table className="w-full min-w-[600px]">
               <thead>
                 <tr className="border-b">
                   <th className="text-left py-3 px-2">用户名</th>
@@ -160,7 +183,13 @@ export default function Users() {
                     </td>
                     <td className="py-3 px-2 text-right">
                       {u.id !== user.id && (
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2 flex-wrap">
+                          <button
+                            onClick={() => handleResetPassword(u.id)}
+                            className="text-sm px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+                          >
+                            重置密码
+                          </button>
                           <button
                             onClick={() => handleToggleActive(u.id, u.is_active)}
                             className={`text-sm px-3 py-1 rounded ${u.is_active ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}
@@ -169,7 +198,7 @@ export default function Users() {
                           </button>
                           <button
                             onClick={() => handleDeleteUser(u.id)}
-                            className="text-sm px-3 py-1 rounded bg-red-500 text-white"
+                            className="text-sm px-3 py-1 rounded bg-red-500 text-white hover:bg-red-600"
                           >
                             删除
                           </button>

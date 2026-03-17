@@ -88,7 +88,7 @@ export default function OrderDetail() {
     setSending(true)
     try {
       const token = localStorage.getItem('token')
-      const res = await fetch(`/api/orders/${id}/confirm`, {
+      const res = await fetch(`/api/orders/${id}?action=confirm`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       })
@@ -105,29 +105,27 @@ export default function OrderDetail() {
     }
   }
 
-  // 转移所有权（仅管理员）
-  const handleTransfer = async (newOwnerId) => {
-    if (!newOwnerId) return
+  // 计算箱子汇总
+  const calcSummary = (boxes) => {
+    if (!boxes || boxes.length === 0) return { totalVolume: 0, totalWeight: 0, totalQuantity: 0 }
     
-    try {
-      const token = localStorage.getItem('token')
-      const res = await fetch(`/api/orders/${id}/transfer`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ new_owner_id: newOwnerId })
-      })
+    let totalVolume = 0
+    let totalWeight = 0
+    let totalQuantity = 0
+    
+    boxes.forEach(box => {
+      const l = parseFloat(box.length) || 0
+      const w = parseFloat(box.width) || 0
+      const h = parseFloat(box.height) || 0
+      const wt = parseFloat(box.weight) || 0
+      const q = parseInt(box.quantity) || 1
       
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      
-      setOrder(data.order)
-      alert('✅ 所有权已转移')
-    } catch (err) {
-      alert('❌ ' + err.message)
-    }
+      totalVolume += l * w * h * q
+      totalWeight += wt * q
+      totalQuantity += q
+    })
+    
+    return { totalVolume, totalWeight, totalQuantity }
   }
 
   if (loading) {
@@ -145,6 +143,11 @@ export default function OrderDetail() {
       </div>
     )
   }
+
+  const boxes = order.boxes || []
+  const summary = calcSummary(boxes)
+  const volumeWeight = summary.totalVolume / 5000
+  const chargeWeight = Math.max(summary.totalWeight, volumeWeight)
 
   return (
     <div className="min-h-screen gradient-bg pb-8">
@@ -172,11 +175,11 @@ export default function OrderDetail() {
               </span>
             </div>
             
-            {order.status === 'quote' && (
+            {order.status === 'quote' && canEdit && (
               <button
                 onClick={handleConfirmOrder}
                 disabled={sending}
-                className="btn-success !py-2"
+                className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 disabled:opacity-50"
               >
                 {sending ? '处理中...' : '确认下单'}
               </button>
@@ -184,7 +187,7 @@ export default function OrderDetail() {
           </div>
           
           <div className="mt-3 text-sm text-gray-500">
-            创建者: {order.owner_name} | 
+            创建者: {order.owner_name || '未知'} | 
             创建时间: {new Date(order.created_at).toLocaleString('zh-CN')}
           </div>
         </div>
@@ -193,34 +196,50 @@ export default function OrderDetail() {
         <div className="card">
           <h2 className="font-bold text-lg mb-4 border-b pb-2">📦 货物信息</h2>
           
-          {editing ? (
+          {boxes.length > 0 ? (
             <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="label">长 (cm)</label>
-                  <input name="length" className="input" value={formData.length || ''} onChange={handleChange} />
+              {/* 箱子列表 */}
+              {boxes.map((box, index) => (
+                <div key={index} className="border rounded-lg p-3 bg-gray-50">
+                  <div className="font-medium text-gray-700 mb-2">箱子 {index + 1}</div>
+                  <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
+                    <div>尺寸: {box.length} × {box.width} × {box.height} cm</div>
+                    <div>单件重量: {box.weight} kg</div>
+                    <div>件数: {box.quantity} 件</div>
+                    <div>小计重量: {(box.weight * box.quantity).toFixed(2)} kg</div>
+                  </div>
                 </div>
-                <div>
-                  <label className="label">宽 (cm)</label>
-                  <input name="width" className="input" value={formData.width || ''} onChange={handleChange} />
-                </div>
-                <div>
-                  <label className="label">高 (cm)</label>
-                  <input name="height" className="input" value={formData.height || ''} onChange={handleChange} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">单件重量 (kg)</label>
-                  <input name="weight" className="input" value={formData.weight || ''} onChange={handleChange} />
-                </div>
-                <div>
-                  <label className="label">件数</label>
-                  <input name="quantity" className="input" value={formData.quantity || ''} onChange={handleChange} />
+              ))}
+              
+              {/* 汇总 */}
+              <div className="bg-purple-50 rounded-lg p-4">
+                <h3 className="font-medium text-purple-800 mb-3">📊 汇总</h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">总件数:</span>
+                    <span className="font-medium">{summary.totalQuantity} 件</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">总体积:</span>
+                    <span className="font-medium">{(summary.totalVolume / 1000000).toFixed(4)} m³</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">总重量:</span>
+                    <span className="font-medium">{summary.totalWeight.toFixed(2)} kg</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">体积重:</span>
+                    <span className="font-medium">{volumeWeight.toFixed(2)} kg</span>
+                  </div>
+                  <div className="col-span-2 flex justify-between pt-2 border-t border-purple-200 font-bold">
+                    <span className="text-purple-700">计费重量:</span>
+                    <span className="text-purple-700 text-lg">{chargeWeight.toFixed(2)} kg</span>
+                  </div>
                 </div>
               </div>
             </div>
           ) : (
+            // 兼容旧数据
             <div className="space-y-2 text-gray-700">
               <div>单件尺寸: {order.length} × {order.width} × {order.height} cm</div>
               <div>件数: {order.quantity} 件</div>
@@ -286,7 +305,7 @@ export default function OrderDetail() {
               ) : (
                 <>
                   <button onClick={() => setEditing(true)} className="btn-secondary flex-1">编辑</button>
-                  <button onClick={handleDelete} className="btn-danger flex-1">删除</button>
+                  <button onClick={handleDelete} className="bg-red-500 text-white py-3 rounded-lg font-medium hover:bg-red-600 flex-1">删除</button>
                 </>
               )}
             </div>

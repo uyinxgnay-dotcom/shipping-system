@@ -7,13 +7,11 @@ export default function NewOrder() {
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('quote')
+  const [boxes, setBoxes] = useState([
+    { length: '', width: '', height: '', weight: '', quantity: 1 }
+  ])
   const [formData, setFormData] = useState({
     order_id: '',
-    length: '',
-    width: '',
-    height: '',
-    weight: '',
-    quantity: 1,
     recipient_name: '',
     country: '',
     province: '',
@@ -24,22 +22,48 @@ export default function NewOrder() {
     notes: ''
   })
 
-  // 自动计算
+  // 计算所有箱子的汇总
   const calcResult = (() => {
-    const l = parseFloat(formData.length) || 0
-    const w = parseFloat(formData.width) || 0
-    const h = parseFloat(formData.height) || 0
-    const wt = parseFloat(formData.weight) || 0
-    const q = parseInt(formData.quantity) || 1
-    
-    const totalVolumeCm = l * w * h * q
+    let totalVolumeCm = 0
+    let totalWeight = 0
+    let totalQuantity = 0
+
+    boxes.forEach(box => {
+      const l = parseFloat(box.length) || 0
+      const w = parseFloat(box.width) || 0
+      const h = parseFloat(box.height) || 0
+      const wt = parseFloat(box.weight) || 0
+      const q = parseInt(box.quantity) || 1
+
+      totalVolumeCm += l * w * h * q
+      totalWeight += wt * q
+      totalQuantity += q
+    })
+
     const totalVolumeM = totalVolumeCm / 1000000
-    const totalWeight = wt * q
     const volumeWeight = totalVolumeCm / 5000
     const chargeWeight = Math.max(totalWeight, volumeWeight)
-    
-    return { totalVolumeM, totalWeight, volumeWeight, chargeWeight }
+
+    return { totalVolumeM, totalWeight, volumeWeight, chargeWeight, totalQuantity }
   })()
+
+  const handleBoxChange = (index, field, value) => {
+    setBoxes(prev => {
+      const newBoxes = [...prev]
+      newBoxes[index] = { ...newBoxes[index], [field]: value }
+      return newBoxes
+    })
+  }
+
+  const addBox = () => {
+    setBoxes(prev => [...prev, { length: '', width: '', height: '', weight: '', quantity: 1 }])
+  }
+
+  const removeBox = (index) => {
+    if (boxes.length > 1) {
+      setBoxes(prev => prev.filter((_, i) => i !== index))
+    }
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -52,6 +76,10 @@ export default function NewOrder() {
 
     try {
       const token = localStorage.getItem('token')
+      
+      // 过滤有效的箱子数据
+      const validBoxes = boxes.filter(b => b.length && b.width && b.height && b.weight)
+      
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: {
@@ -61,11 +89,13 @@ export default function NewOrder() {
         body: JSON.stringify({
           ...formData,
           status,
-          length: parseFloat(formData.length),
-          width: parseFloat(formData.width),
-          height: parseFloat(formData.height),
-          weight: parseFloat(formData.weight),
-          quantity: parseInt(formData.quantity),
+          boxes: validBoxes,
+          // 兼容旧字段
+          length: validBoxes[0]?.length || 0,
+          width: validBoxes[0]?.width || 0,
+          height: validBoxes[0]?.height || 0,
+          weight: validBoxes[0]?.weight || 0,
+          quantity: calcResult.totalQuantity,
           charge_weight: calcResult.chargeWeight
         })
       })
@@ -76,7 +106,7 @@ export default function NewOrder() {
         throw new Error(data.error || '创建失败')
       }
 
-      alert('✅ 订单创建成功！邮件已发送。')
+      alert('✅ 订单创建成功！')
       navigate('/')
     } catch (err) {
       alert('❌ ' + err.message)
@@ -149,85 +179,112 @@ export default function NewOrder() {
           </div>
         </div>
 
-        {/* 货物信息 */}
+        {/* 货物信息 - 多箱子 */}
         <div className="card">
-          <h2 className="font-bold text-lg mb-4 border-b pb-2">📦 货物信息</h2>
+          <div className="flex justify-between items-center mb-4 border-b pb-2">
+            <h2 className="font-bold text-lg">📦 货物信息</h2>
+            <button
+              type="button"
+              onClick={addBox}
+              className="text-sm px-3 py-1 rounded bg-purple-100 text-purple-700 hover:bg-purple-200"
+            >
+              + 添加箱子
+            </button>
+          </div>
           
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="label">长 (cm)</label>
-                <input
-                  type="number"
-                  name="length"
-                  className="input"
-                  value={formData.length}
-                  onChange={handleChange}
-                  step="0.1"
-                  placeholder="长"
-                  required
-                />
+            {boxes.map((box, index) => (
+              <div key={index} className="border rounded-lg p-4 bg-gray-50">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="font-medium text-gray-700">箱子 {index + 1}</span>
+                  {boxes.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeBox(index)}
+                      className="text-red-500 text-sm hover:text-red-700"
+                    >
+                      删除
+                    </button>
+                  )}
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="label text-xs">长</label>
+                      <input
+                        type="number"
+                        className="input text-sm"
+                        value={box.length}
+                        onChange={(e) => handleBoxChange(index, 'length', e.target.value)}
+                        step="0.1"
+                        placeholder="cm"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="label text-xs">宽</label>
+                      <input
+                        type="number"
+                        className="input text-sm"
+                        value={box.width}
+                        onChange={(e) => handleBoxChange(index, 'width', e.target.value)}
+                        step="0.1"
+                        placeholder="cm"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="label text-xs">高</label>
+                      <input
+                        type="number"
+                        className="input text-sm"
+                        value={box.height}
+                        onChange={(e) => handleBoxChange(index, 'height', e.target.value)}
+                        step="0.1"
+                        placeholder="cm"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="label text-xs">单件重量</label>
+                      <input
+                        type="number"
+                        className="input text-sm"
+                        value={box.weight}
+                        onChange={(e) => handleBoxChange(index, 'weight', e.target.value)}
+                        step="0.01"
+                        placeholder="kg"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="label text-xs">件数</label>
+                      <input
+                        type="number"
+                        className="input text-sm"
+                        value={box.quantity}
+                        onChange={(e) => handleBoxChange(index, 'quantity', e.target.value)}
+                        min="1"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="label">宽 (cm)</label>
-                <input
-                  type="number"
-                  name="width"
-                  className="input"
-                  value={formData.width}
-                  onChange={handleChange}
-                  step="0.1"
-                  placeholder="宽"
-                  required
-                />
-              </div>
-              <div>
-                <label className="label">高 (cm)</label>
-                <input
-                  type="number"
-                  name="height"
-                  className="input"
-                  value={formData.height}
-                  onChange={handleChange}
-                  step="0.1"
-                  placeholder="高"
-                  required
-                />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">单件重量 (kg)</label>
-                <input
-                  type="number"
-                  name="weight"
-                  className="input"
-                  value={formData.weight}
-                  onChange={handleChange}
-                  step="0.01"
-                  placeholder="单件重量"
-                  required
-                />
-              </div>
-              <div>
-                <label className="label">件数</label>
-                <input
-                  type="number"
-                  name="quantity"
-                  className="input"
-                  value={formData.quantity}
-                  onChange={handleChange}
-                  min="1"
-                  required
-                />
-              </div>
-            </div>
+            ))}
             
             {/* 计算结果 */}
             <div className="bg-purple-50 rounded-lg p-4 mt-4">
-              <h3 className="font-medium text-purple-800 mb-3">📊 自动计算</h3>
+              <h3 className="font-medium text-purple-800 mb-3">📊 汇总计算</h3>
               <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">总件数:</span>
+                  <span className="font-medium">{calcResult.totalQuantity} 件</span>
+                </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">总体积:</span>
                   <span className="font-medium">{calcResult.totalVolumeM.toFixed(4)} m³</span>
@@ -240,9 +297,9 @@ export default function NewOrder() {
                   <span className="text-gray-600">体积重:</span>
                   <span className="font-medium">{calcResult.volumeWeight.toFixed(2)} kg</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 font-medium">计费重量:</span>
-                  <span className="font-bold text-purple-700 text-lg">{calcResult.chargeWeight.toFixed(2)} kg</span>
+                <div className="col-span-2 flex justify-between pt-2 border-t border-purple-200">
+                  <span className="text-gray-700 font-medium">计费重量:</span>
+                  <span className="font-bold text-purple-700 text-xl">{calcResult.chargeWeight.toFixed(2)} kg</span>
                 </div>
               </div>
             </div>
