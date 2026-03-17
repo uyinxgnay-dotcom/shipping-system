@@ -28,7 +28,7 @@ async function sendDingtalk(message) {
 
   const url = `${DINGTALK_WEBHOOK}&timestamp=${timestamp}&sign=${encodeURIComponent(sign)}`;
 
-  const response = await fetch(url, {
+  await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -100,13 +100,6 @@ export default async function handler(req) {
     const updates = await req.json();
     updates.updated_at = new Date().toISOString();
 
-    if (updates.length && updates.width && updates.height && updates.weight && updates.quantity) {
-      const totalVolumeCm = updates.length * updates.width * updates.height * updates.quantity;
-      const totalWeight = updates.weight * updates.quantity;
-      const volumeWeight = totalVolumeCm / 5000;
-      updates.charge_weight = Math.max(totalWeight, volumeWeight);
-    }
-
     const { data: updated, error } = await supabase
       .from('orders')
       .update(updates)
@@ -175,8 +168,106 @@ export default async function handler(req) {
         return new Response(JSON.stringify({ error: '更新失败' }), { status: 500, headers });
       }
 
-      // 发送钉钉通知
       const message = `📦 订单已确认下单！\n\n订单号: ${order.order_id}\n收件人: ${order.recipient_name}\n国家: ${order.country}\n计费重量: ${order.charge_weight?.toFixed(2)} kg\n\n操作人: ${user.username}`;
+      
+      try {
+        await sendDingtalk(message);
+      } catch (e) {
+        console.error('钉钉通知失败:', e);
+      }
+
+      return new Response(JSON.stringify({ order: updated }), { status: 200, headers });
+    }
+
+    // 发货（仅管理员）
+    if (action === 'ship') {
+      if (user.role !== 'admin') {
+        return new Response(JSON.stringify({ error: '只有管理员可以发货' }), { status: 403, headers });
+      }
+
+      const { data: order } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (!order) {
+        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+      }
+
+      if (order.status !== 'ordered') {
+        return new Response(JSON.stringify({ error: '只有已下单的订单可以发货' }), { status: 400, headers });
+      }
+
+      const body = await req.json();
+      const { tracking_number, tracking_image } = body;
+
+      if (!tracking_number || !tracking_image) {
+        return new Response(JSON.stringify({ error: '请填写运单号并上传运单图片' }), { status: 400, headers });
+      }
+
+      const { data: updated, error } = await supabase
+        .from('orders')
+        .update({ 
+          status: 'shipped', 
+          tracking_number, 
+          tracking_image,
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        return new Response(JSON.stringify({ error: '发货失败' }), { status: 500, headers });
+      }
+
+      const message = `🚚 订单已发货！\n\n订单号: ${order.order_id}\n运单号: ${tracking_number}\n收件人: ${order.recipient_name}\n国家: ${order.country}\n\n操作人: ${user.username}`;
+      
+      try {
+        await sendDingtalk(message);
+      } catch (e) {
+        console.error('钉钉通知失败:', e);
+      }
+
+      return new Response(JSON.stringify({ order: updated }), { status: 200, headers });
+    }
+
+    // 确认到达（仅管理员）
+    if (action === 'arrive') {
+      if (user.role !== 'admin') {
+        return new Response(JSON.stringify({ error: '只有管理员可以确认到达' }), { status: 403, headers });
+      }
+
+      const { data: order } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (!order) {
+        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+      }
+
+      if (order.status !== 'shipped') {
+        return new Response(JSON.stringify({ error: '只有已发货的订单可以确认到达' }), { status: 400, headers });
+      }
+
+      const { data: updated, error } = await supabase
+        .from('orders')
+        .update({ 
+          status: 'arrived', 
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        return new Response(JSON.stringify({ error: '更新失败' }), { status: 500, headers });
+      }
+
+      const message = `✅ 订单已到达！\n\n订单号: ${order.order_id}\n运单号: ${order.tracking_number}\n收件人: ${order.recipient_name}\n国家: ${order.country}\n\n操作人: ${user.username}`;
       
       try {
         await sendDingtalk(message);

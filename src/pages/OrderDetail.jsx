@@ -12,7 +12,13 @@ export default function OrderDetail() {
   const [sending, setSending] = useState(false)
   const [formData, setFormData] = useState({})
 
+  // 发货弹窗状态
+  const [showShipModal, setShowShipModal] = useState(false)
+  const [shipForm, setShipForm] = useState({ tracking_number: '', tracking_image: '' })
+  const [uploading, setUploading] = useState(false)
+
   const canEdit = user?.role === 'admin' || order?.owner_id === user?.id
+  const isAdmin = user?.role === 'admin'
 
   useEffect(() => {
     fetchOrder()
@@ -81,7 +87,7 @@ export default function OrderDetail() {
     }
   }
 
-  // 确认下单并通知
+  // 确认下单
   const handleConfirmOrder = async () => {
     if (!confirm('确认将此报价转为已下单？将发送钉钉通知。')) return
     
@@ -98,6 +104,93 @@ export default function OrderDetail() {
       
       setOrder(prev => ({ ...prev, status: 'ordered' }))
       alert('✅ 已转为下单状态，钉钉通知已发送！')
+    } catch (err) {
+      alert('❌ ' + err.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  // 上传图片
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    setUploading(true)
+    try {
+      const token = localStorage.getItem('token')
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('folder', 'tracking')
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      setShipForm(prev => ({ ...prev, tracking_image: data.url }))
+      alert('✅ 图片上传成功')
+    } catch (err) {
+      alert('❌ ' + err.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // 发货
+  const handleShip = async () => {
+    if (!shipForm.tracking_number || !shipForm.tracking_image) {
+      alert('请填写运单号并上传运单图片')
+      return
+    }
+
+    setSending(true)
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`/api/orders/${id}?action=ship`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(shipForm)
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      setOrder(data.order)
+      setShowShipModal(false)
+      setShipForm({ tracking_number: '', tracking_image: '' })
+      alert('✅ 发货成功，钉钉通知已发送！')
+    } catch (err) {
+      alert('❌ ' + err.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  // 确认到达
+  const handleArrive = async () => {
+    if (!confirm('确认订单已到达？将发送钉钉通知。')) return
+
+    setSending(true)
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`/api/orders/${id}?action=arrive`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      setOrder(data.order)
+      alert('✅ 已确认到达，钉钉通知已发送！')
     } catch (err) {
       alert('❌ ' + err.message)
     } finally {
@@ -126,6 +219,27 @@ export default function OrderDetail() {
     })
     
     return { totalVolume, totalWeight, totalQuantity }
+  }
+
+  // 状态标签
+  const getStatusBadge = (status) => {
+    const styles = {
+      quote: 'bg-orange-100 text-orange-800',
+      ordered: 'bg-blue-100 text-blue-800',
+      shipped: 'bg-purple-100 text-purple-800',
+      arrived: 'bg-green-100 text-green-800'
+    }
+    const labels = {
+      quote: '💰 报价中',
+      ordered: '📋 已下单',
+      shipped: '🚚 已发货',
+      arrived: '✅ 已到达'
+    }
+    return (
+      <span className={`status-badge ${styles[status] || 'bg-gray-100 text-gray-800'}`}>
+        {labels[status] || status}
+      </span>
+    )
   }
 
   if (loading) {
@@ -167,23 +281,43 @@ export default function OrderDetail() {
       <div className="max-w-2xl mx-auto p-4 space-y-4">
         {/* 状态栏 */}
         <div className="card">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
               <span className="font-bold text-xl">{order.order_id}</span>
-              <span className={`status-badge ${order.status === 'quote' ? 'status-quote' : 'status-ordered'}`}>
-                {order.status === 'quote' ? '💰 报价中' : '✅ 已下单'}
-              </span>
+              {getStatusBadge(order.status)}
             </div>
             
-            {order.status === 'quote' && canEdit && (
-              <button
-                onClick={handleConfirmOrder}
-                disabled={sending}
-                className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 disabled:opacity-50"
-              >
-                {sending ? '处理中...' : '确认下单'}
-              </button>
-            )}
+            {/* 操作按钮 */}
+            <div className="flex gap-2 flex-wrap">
+              {order.status === 'quote' && canEdit && (
+                <button
+                  onClick={handleConfirmOrder}
+                  disabled={sending}
+                  className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm"
+                >
+                  {sending ? '处理中...' : '确认下单'}
+                </button>
+              )}
+              
+              {order.status === 'ordered' && isAdmin && (
+                <button
+                  onClick={() => setShowShipModal(true)}
+                  className="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 text-sm"
+                >
+                  🚚 发货
+                </button>
+              )}
+              
+              {order.status === 'shipped' && isAdmin && (
+                <button
+                  onClick={handleArrive}
+                  disabled={sending}
+                  className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm"
+                >
+                  {sending ? '处理中...' : '✅ 确认到达'}
+                </button>
+              )}
+            </div>
           </div>
           
           <div className="mt-3 text-sm text-gray-500">
@@ -192,13 +326,51 @@ export default function OrderDetail() {
           </div>
         </div>
 
+        {/* 物流信息（已发货后显示） */}
+        {(order.status === 'shipped' || order.status === 'arrived') && order.tracking_number && (
+          <div className="card">
+            <h2 className="font-bold text-lg mb-4 border-b pb-2">🚚 物流信息</h2>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-600">运单号:</span>
+                <span className="font-medium">{order.tracking_number}</span>
+              </div>
+              {order.tracking_image && (
+                <div>
+                  <span className="text-gray-600 block mb-2">运单图片:</span>
+                  <a 
+                    href={order.tracking_image} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-block"
+                  >
+                    <img 
+                      src={order.tracking_image} 
+                      alt="运单图片" 
+                      className="max-w-xs rounded-lg border hover:shadow-lg transition-shadow cursor-pointer"
+                    />
+                  </a>
+                  <div className="mt-2">
+                    <a 
+                      href={order.tracking_image} 
+                      download
+                      className="text-blue-600 hover:text-blue-700 text-sm"
+                    >
+                      📥 下载运单图片
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* 货物信息 */}
         <div className="card">
           <h2 className="font-bold text-lg mb-4 border-b pb-2">📦 货物信息</h2>
           
           {boxes.length > 0 ? (
             <div className="space-y-4">
-              {/* 箱子列表 */}
               {boxes.map((box, index) => (
                 <div key={index} className="border rounded-lg p-3 bg-gray-50">
                   <div className="font-medium text-gray-700 mb-2">箱子 {index + 1}</div>
@@ -211,7 +383,6 @@ export default function OrderDetail() {
                 </div>
               ))}
               
-              {/* 汇总 */}
               <div className="bg-purple-50 rounded-lg p-4">
                 <h3 className="font-medium text-purple-800 mb-3">📊 汇总</h3>
                 <div className="grid grid-cols-2 gap-2 text-sm">
@@ -239,16 +410,12 @@ export default function OrderDetail() {
               </div>
             </div>
           ) : (
-            // 兼容旧数据
             <div className="space-y-2 text-gray-700">
               <div>单件尺寸: {order.length} × {order.width} × {order.height} cm</div>
               <div>件数: {order.quantity} 件</div>
               <div>单件重量: {order.weight} kg</div>
               <div className="pt-2 border-t mt-2">
-                <div>总体积: {(order.length * order.width * order.height * order.quantity / 1000000).toFixed(4)} m³</div>
-                <div>总重量: {(order.weight * order.quantity).toFixed(2)} kg</div>
-                <div>体积重: {(order.length * order.width * order.height * order.quantity / 5000).toFixed(2)} kg</div>
-                <div className="font-bold text-purple-700">计费重量: {order.charge_weight?.toFixed(2)} kg</div>
+                <div>计费重量: {order.charge_weight?.toFixed(2)} kg</div>
               </div>
             </div>
           )}
@@ -294,7 +461,7 @@ export default function OrderDetail() {
         </div>
 
         {/* 操作按钮 */}
-        {canEdit && (
+        {canEdit && order.status === 'quote' && (
           <div className="card">
             <div className="flex gap-3">
               {editing ? (
@@ -312,6 +479,69 @@ export default function OrderDetail() {
           </div>
         )}
       </div>
+
+      {/* 发货弹窗 */}
+      {showShipModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="card w-full max-w-md">
+            <h2 className="font-bold text-xl mb-4">🚚 发货</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="label">运单号 <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  className="input"
+                  value={shipForm.tracking_number}
+                  onChange={(e) => setShipForm(prev => ({ ...prev, tracking_number: e.target.value }))}
+                  placeholder="请输入运单号"
+                />
+              </div>
+              
+              <div>
+                <label className="label">运单图片 <span className="text-red-500">*</span></label>
+                <div className="space-y-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+                    disabled={uploading}
+                  />
+                  {uploading && <div className="text-sm text-gray-500">上传中...</div>}
+                  {shipForm.tracking_image && (
+                    <img 
+                      src={shipForm.tracking_image} 
+                      alt="预览" 
+                      className="max-w-full h-32 object-contain rounded border"
+                    />
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex gap-3 pt-2">
+                <button 
+                  onClick={handleShip} 
+                  className="btn-primary flex-1" 
+                  disabled={sending || !shipForm.tracking_number || !shipForm.tracking_image}
+                >
+                  {sending ? '处理中...' : '确认发货'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowShipModal(false)
+                    setShipForm({ tracking_number: '', tracking_image: '' })
+                  }}
+                  className="btn-secondary flex-1"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

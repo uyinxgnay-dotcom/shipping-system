@@ -36,6 +36,36 @@ export default function Dashboard() {
     return matchStatus && matchSearch
   })
 
+  // 状态统计
+  const stats = {
+    all: orders.length,
+    quote: orders.filter(o => o.status === 'quote').length,
+    ordered: orders.filter(o => o.status === 'ordered').length,
+    shipped: orders.filter(o => o.status === 'shipped').length,
+    arrived: orders.filter(o => o.status === 'arrived').length,
+  }
+
+  // 状态标签样式
+  const getStatusStyle = (status) => {
+    const styles = {
+      quote: 'bg-orange-100 text-orange-800',
+      ordered: 'bg-blue-100 text-blue-800',
+      shipped: 'bg-purple-100 text-purple-800',
+      arrived: 'bg-green-100 text-green-800'
+    }
+    return styles[status] || 'bg-gray-100 text-gray-800'
+  }
+
+  const getStatusLabel = (status) => {
+    const labels = {
+      quote: '💰 报价中',
+      ordered: '📋 已下单',
+      shipped: '🚚 已发货',
+      arrived: '✅ 已到达'
+    }
+    return labels[status] || status
+  }
+
   return (
     <div className="min-h-screen gradient-bg">
       {/* 顶部导航 */}
@@ -60,48 +90,65 @@ export default function Dashboard() {
       <div className="max-w-6xl mx-auto p-4">
         {/* 操作栏 */}
         <div className="card mb-4">
-          <div className="flex flex-wrap gap-4 items-center justify-between">
-            <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 items-center justify-between mb-4">
+            {/* 状态筛选 */}
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => setFilter('all')}
-                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                className={`px-3 py-2 rounded-lg font-medium transition-all text-sm ${
                   filter === 'all' ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-700'
                 }`}
               >
-                全部 ({orders.length})
+                全部 ({stats.all})
               </button>
               <button
                 onClick={() => setFilter('quote')}
-                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                className={`px-3 py-2 rounded-lg font-medium transition-all text-sm ${
                   filter === 'quote' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700'
                 }`}
               >
-                💰 报价中 ({orders.filter(o => o.status === 'quote').length})
+                💰 报价中 ({stats.quote})
               </button>
               <button
                 onClick={() => setFilter('ordered')}
-                className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                  filter === 'ordered' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700'
+                className={`px-3 py-2 rounded-lg font-medium transition-all text-sm ${
+                  filter === 'ordered' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'
                 }`}
               >
-                ✅ 已下单 ({orders.filter(o => o.status === 'ordered').length})
+                📋 已下单 ({stats.ordered})
+              </button>
+              <button
+                onClick={() => setFilter('shipped')}
+                className={`px-3 py-2 rounded-lg font-medium transition-all text-sm ${
+                  filter === 'shipped' ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                🚚 已发货 ({stats.shipped})
+              </button>
+              <button
+                onClick={() => setFilter('arrived')}
+                className={`px-3 py-2 rounded-lg font-medium transition-all text-sm ${
+                  filter === 'arrived' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                ✅ 已到达 ({stats.arrived})
               </button>
             </div>
             
             <div className="flex gap-2">
               {user?.role === 'admin' && (
-                <Link to="/users" className="btn-secondary">
+                <Link to="/users" className="btn-secondary text-sm">
                   👥 用户管理
                 </Link>
               )}
-              <Link to="/new" className="btn-primary !w-auto">
+              <Link to="/new" className="btn-primary !w-auto text-sm">
                 + 新建订单
               </Link>
             </div>
           </div>
           
           {/* 搜索框 */}
-          <div className="mt-4">
+          <div>
             <input
               type="text"
               className="input"
@@ -129,21 +176,20 @@ export default function Dashboard() {
               >
                 <div className="flex justify-between items-start">
                   <div>
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className="font-bold text-lg">{order.order_id}</span>
-                      <span className={`status-badge ${order.status === 'quote' ? 'status-quote' : 'status-ordered'}`}>
-                        {order.status === 'quote' ? '💰 报价中' : '✅ 已下单'}
+                      <span className={`status-badge ${getStatusStyle(order.status)}`}>
+                        {getStatusLabel(order.status)}
                       </span>
-                      {order.owner_id !== user?.id && user?.role !== 'admin' && (
-                        <span className="text-xs text-gray-400">({order.owner_name}创建)</span>
+                      {order.tracking_number && (
+                        <span className="text-xs text-gray-500">运单: {order.tracking_number}</span>
                       )}
                     </div>
                     <div className="text-gray-600 text-sm">
                       📍 {order.recipient_name} | {order.country} {order.city}
                     </div>
                     <div className="text-gray-600 text-sm mt-1">
-                      📦 {order.length}×{order.width}×{order.height}cm × {order.quantity}件 | 
-                      计费重量: {order.charge_weight?.toFixed(2)}kg
+                      📦 计费重量: {order.charge_weight?.toFixed(2)}kg
                     </div>
                   </div>
                   <div className="text-right text-gray-400 text-sm">
