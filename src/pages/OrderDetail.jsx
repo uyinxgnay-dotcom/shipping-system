@@ -477,7 +477,7 @@ export default function OrderDetail() {
         </div>
 
         {/* 操作按钮 */}
-        {canEdit && order.status === 'quote' && (
+        {canEdit && (order.status === 'quote' || order.status === 'ordered') && (
           <div className="card">
             <div className="flex gap-3">
               {editing ? (
