@@ -72,6 +72,13 @@ export default function NewOrder() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    // 已下单状态必须有订单号
+    if (status === 'ordered' && !formData.order_id.trim()) {
+      alert('❌ 已下单状态必须填写订单号')
+      return
+    }
+    
     setLoading(true)
 
     try {
@@ -137,7 +144,10 @@ export default function NewOrder() {
           
           <div className="space-y-4">
             <div>
-              <label className="label">订单号 <span className="text-red-500">*</span></label>
+              <label className="label">
+                订单号 {status === 'ordered' && <span className="text-red-500">*</span>}
+                {status === 'quote' && <span className="text-gray-400 text-sm ml-2">(报价中可选)</span>}
+              </label>
               <input
                 type="text"
                 name="order_id"
@@ -145,7 +155,7 @@ export default function NewOrder() {
                 value={formData.order_id}
                 onChange={handleChange}
                 placeholder="例如: ORD-20260317-001"
-                required
+                required={status === 'ordered'}
               />
             </div>
             

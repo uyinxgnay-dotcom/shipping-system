@@ -63,8 +63,13 @@ export default async function handler(req) {
   if (req.method === 'POST') {
     const data = await req.json();
 
-    if (!data.order_id || !data.recipient_name || !data.country) {
-      return new Response(JSON.stringify({ error: '请填写必填项' }), { status: 400, headers });
+    // 已下单状态必须有订单号，报价中可选
+    if (data.status === 'ordered' && !data.order_id) {
+      return new Response(JSON.stringify({ error: '已下单状态必须填写订单号' }), { status: 400, headers });
+    }
+
+    if (!data.recipient_name || !data.country) {
+      return new Response(JSON.stringify({ error: '请填写收件人姓名和国家' }), { status: 400, headers });
     }
 
     const { data: order, error } = await supabase

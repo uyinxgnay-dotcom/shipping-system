@@ -89,6 +89,12 @@ export default function OrderDetail() {
 
   // 确认下单
   const handleConfirmOrder = async () => {
+    // 检查订单号
+    if (!order.order_id || !order.order_id.trim()) {
+      alert('❌ 请先填写订单号再确认下单')
+      return
+    }
+    
     if (!confirm('确认将此报价转为已下单？将发送钉钉通知。')) return
     
     setSending(true)
@@ -283,7 +289,17 @@ export default function OrderDetail() {
         <div className="card">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <span className="font-bold text-xl">{order.order_id}</span>
+              {editing ? (
+                <input 
+                  name="order_id" 
+                  className="input text-lg font-bold w-48" 
+                  value={formData.order_id || ''} 
+                  onChange={handleChange} 
+                  placeholder="订单号（下单必填）" 
+                />
+              ) : (
+                <span className="font-bold text-xl">{order.order_id || '未填写订单号'}</span>
+              )}
               {getStatusBadge(order.status)}
             </div>
             

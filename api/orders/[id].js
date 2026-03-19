@@ -169,6 +169,11 @@ export default async function handler(req) {
         return new Response(JSON.stringify({ error: '只有报价中的订单可以确认下单' }), { status: 400, headers });
       }
 
+      // 报价转已下单必须有订单号
+      if (!order.order_id) {
+        return new Response(JSON.stringify({ error: '请先填写订单号再确认下单' }), { status: 400, headers });
+      }
+
       const { data: updated, error } = await supabase
         .from('orders')
         .update({ status: 'ordered', updated_at: new Date().toISOString() })
