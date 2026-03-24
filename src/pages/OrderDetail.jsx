@@ -284,6 +284,54 @@ export default function OrderDetail() {
     }
   }
 
+  // 锁定报价（仅管理员）
+  const handleLockQuote = async () => {
+    if (!confirm('确定要锁定报价吗？锁定后将无法修改报价信息。')) return
+
+    setSending(true)
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`/api/orders/${id}?action=lockQuote`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      setOrder(data.order)
+      alert('✅ 报价已锁定')
+    } catch (err) {
+      alert('❌ ' + err.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  // 解锁报价（仅管理员）
+  const handleUnlockQuote = async () => {
+    if (!confirm('确定要解锁报价吗？解锁后可以修改报价信息。')) return
+
+    setSending(true)
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`/api/orders/${id}?action=unlockQuote`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      setOrder(data.order)
+      alert('✅ 报价已解锁')
+    } catch (err) {
+      alert('❌ ' + err.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
   // 计算箱子汇总
   const calcSummary = (boxes) => {
     if (!boxes || boxes.length === 0) return { totalVolume: 0, totalWeight: 0, totalQuantity: 0 }
@@ -644,6 +692,87 @@ export default function OrderDetail() {
                 </div>
               </div>
             )
+          )}
+        </div>
+
+        {/* 报价信息（管理员可编辑） */}
+        <div className="card">
+          <div className="flex justify-between items-center mb-4 border-b pb-2">
+            <h2 className="font-bold text-lg">💰 报价信息</h2>
+            {order.quote_locked && (
+              <span className="text-sm px-2 py-1 bg-red-100 text-red-700 rounded">🔒 已锁定</span>
+            )}
+          </div>
+          
+          {/* 只有管理员可以编辑报价 */}
+          {isAdmin && !order.quote_locked && editing ? (
+            <div className="space-y-3">
+              <div>
+                <label className="label">报价金额</label>
+                <input 
+                  name="quote_price" 
+                  type="number"
+                  step="0.01"
+                  className="input" 
+                  value={formData.quote_price || ''} 
+                  onChange={handleChange} 
+                  placeholder="请输入报价金额" 
+                />
+              </div>
+              <div>
+                <label className="label">承运物流公司</label>
+                <input 
+                  name="carrier" 
+                  className="input" 
+                  value={formData.carrier || ''} 
+                  onChange={handleChange} 
+                  placeholder="请输入承运物流公司名称" 
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2 text-gray-700">
+              <div className="flex justify-between">
+                <span className="text-gray-500">报价金额:</span>
+                <span className="font-medium">
+                  {order.quote_price ? `¥${parseFloat(order.quote_price).toFixed(2)}` : '未设置'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">承运物流:</span>
+                <span className="font-medium">{order.carrier || '未设置'}</span>
+              </div>
+              {order.quote_updated_at && (
+                <div className="text-sm text-gray-400 mt-2">
+                  报价时间: {new Date(order.quote_updated_at).toLocaleString('zh-CN')}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 管理员锁定/解锁按钮 */}
+          {isAdmin && (
+            <div className="mt-4 pt-4 border-t">
+              {order.quote_locked ? (
+                <button
+                  onClick={handleUnlockQuote}
+                  disabled={sending}
+                  className="w-full py-2 rounded-lg border border-orange-400 text-orange-600 hover:bg-orange-50 text-sm"
+                >
+                  {sending ? '处理中...' : '🔓 解锁报价'}
+                </button>
+              ) : (
+                (order.quote_price || order.carrier) && (
+                  <button
+                    onClick={handleLockQuote}
+                    disabled={sending}
+                    className="w-full py-2 rounded-lg border border-red-400 text-red-600 hover:bg-red-50 text-sm"
+                  >
+                    {sending ? '处理中...' : '🔒 锁定报价（锁定后不可修改）'}
+                  </button>
+                )
+              )}
+            </div>
           )}
         </div>
 

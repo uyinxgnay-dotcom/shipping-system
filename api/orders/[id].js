@@ -97,7 +97,7 @@ export default async function handler(req) {
   if (req.method === 'PUT') {
     const { data: orderCheck } = await supabase
       .from('orders')
-      .select('owner_id')
+      .select('owner_id, quote_locked')
       .eq('id', id)
       .single();
 
@@ -111,6 +111,22 @@ export default async function handler(req) {
 
     const updates = await req.json();
     updates.updated_at = new Date().toISOString();
+
+    // 报价相关字段的权限控制
+    const quoteFields = ['quote_price', 'carrier'];
+    const hasQuoteFields = quoteFields.some(field => updates[field] !== undefined);
+
+    if (hasQuoteFields) {
+      // 只有管理员可以修改报价字段
+      if (user.role !== 'admin') {
+        return new Response(JSON.stringify({ error: '只有管理员可以设置报价信息' }), { status: 403, headers });
+      }
+
+      // 如果报价已锁定，禁止修改
+      if (orderCheck.quote_locked) {
+        return new Response(JSON.stringify({ error: '报价已锁定，无法修改' }), { status: 403, headers });
+      }
+    }
 
     const { data: updated, error } = await supabase
       .from('orders')
@@ -290,6 +306,73 @@ export default async function handler(req) {
         await sendDingtalk(message);
       } catch (e) {
         console.error('钉钉通知失败:', e);
+      }
+
+      return new Response(JSON.stringify({ order: updated }), { status: 200, headers });
+    }
+
+    // 锁定报价（仅管理员）
+    if (action === 'lockQuote') {
+      if (user.role !== 'admin') {
+        return new Response(JSON.stringify({ error: '只有管理员可以锁定报价' }), { status: 403, headers });
+      }
+
+      const { data: order } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (!order) {
+        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+      }
+
+      const { data: updated, error } = await supabase
+        .from('orders')
+        .update({ 
+          quote_locked: true, 
+          quote_updated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        return new Response(JSON.stringify({ error: '锁定失败' }), { status: 500, headers });
+      }
+
+      return new Response(JSON.stringify({ order: updated }), { status: 200, headers });
+    }
+
+    // 解锁报价（仅管理员）
+    if (action === 'unlockQuote') {
+      if (user.role !== 'admin') {
+        return new Response(JSON.stringify({ error: '只有管理员可以解锁报价' }), { status: 403, headers });
+      }
+
+      const { data: order } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (!order) {
+        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+      }
+
+      const { data: updated, error } = await supabase
+        .from('orders')
+        .update({ 
+          quote_locked: false, 
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        return new Response(JSON.stringify({ error: '解锁失败' }), { status: 500, headers });
       }
 
       return new Response(JSON.stringify({ order: updated }), { status: 200, headers });

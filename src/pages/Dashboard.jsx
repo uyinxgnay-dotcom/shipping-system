@@ -190,6 +190,12 @@ export default function Dashboard() {
                     </div>
                     <div className="text-gray-600 text-sm mt-1">
                       📦 计费重量: {order.charge_weight?.toFixed(2)}kg
+                      {order.quote_price && (
+                        <span className="ml-3 text-green-600">💰 ¥{parseFloat(order.quote_price).toFixed(2)}</span>
+                      )}
+                      {order.carrier && (
+                        <span className="ml-2 text-blue-600">🚚 {order.carrier}</span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right text-gray-400 text-sm">
