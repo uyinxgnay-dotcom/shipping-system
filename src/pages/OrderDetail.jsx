@@ -11,6 +11,7 @@ export default function OrderDetail() {
   const [editing, setEditing] = useState(false)
   const [sending, setSending] = useState(false)
   const [formData, setFormData] = useState({})
+  const [editBoxes, setEditBoxes] = useState([]) // 编辑模式下的箱子数据
 
   // 发货弹窗状态
   const [showShipModal, setShowShipModal] = useState(false)
@@ -33,6 +34,19 @@ export default function OrderDetail() {
       const data = await res.json()
       setOrder(data.order)
       setFormData(data.order)
+      // 初始化编辑用的箱子数据
+      if (data.order.boxes && data.order.boxes.length > 0) {
+        setEditBoxes(data.order.boxes)
+      } else {
+        // 兼容旧数据：从单个箱子字段创建
+        setEditBoxes([{
+          length: data.order.length || '',
+          width: data.order.width || '',
+          height: data.order.height || '',
+          weight: data.order.weight || '',
+          quantity: data.order.quantity || 1
+        }])
+      }
     } catch (err) {
       console.error('获取订单失败:', err)
     } finally {
@@ -45,22 +59,88 @@ export default function OrderDetail() {
     setFormData(prev => ({ ...prev, [name]: value }))
   }
 
+  // 箱子编辑相关处理函数
+  const handleBoxChange = (index, field, value) => {
+    setEditBoxes(prev => {
+      const newBoxes = [...prev]
+      newBoxes[index] = { ...newBoxes[index], [field]: value }
+      return newBoxes
+    })
+  }
+
+  const addBox = () => {
+    setEditBoxes(prev => [...prev, { length: '', width: '', height: '', weight: '', quantity: 1 }])
+  }
+
+  const removeBox = (index) => {
+    if (editBoxes.length > 1) {
+      setEditBoxes(prev => prev.filter((_, i) => i !== index))
+    }
+  }
+
+  // 计算编辑模式下的箱子汇总
+  const calcEditSummary = () => {
+    let totalVolume = 0
+    let totalWeight = 0
+    let totalQuantity = 0
+    
+    editBoxes.forEach(box => {
+      const l = parseFloat(box.length) || 0
+      const w = parseFloat(box.width) || 0
+      const h = parseFloat(box.height) || 0
+      const wt = parseFloat(box.weight) || 0
+      const q = parseInt(box.quantity) || 1
+      
+      totalVolume += l * w * h * q
+      totalWeight += wt * q
+      totalQuantity += q
+    })
+    
+    return { totalVolume, totalWeight, totalQuantity }
+  }
+
   const handleUpdate = async () => {
     try {
       const token = localStorage.getItem('token')
+      
+      // 计算计费重量
+      const summary = calcEditSummary()
+      const volumeWeight = summary.totalVolume / 5000
+      const chargeWeight = Math.max(summary.totalWeight, volumeWeight)
+      
+      // 过滤有效的箱子数据
+      const validBoxes = editBoxes.filter(b => b.length && b.width && b.height && b.weight)
+      
+      const updateData = {
+        ...formData,
+        boxes: validBoxes,
+        // 兼容旧字段
+        length: validBoxes[0]?.length || 0,
+        width: validBoxes[0]?.width || 0,
+        height: validBoxes[0]?.height || 0,
+        weight: validBoxes[0]?.weight || 0,
+        quantity: summary.totalQuantity,
+        charge_weight: chargeWeight
+      }
+      
       const res = await fetch(`/api/orders/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(updateData)
       })
       
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       
       setOrder(data.order)
+      setFormData(data.order)
+      // 更新编辑用的箱子数据
+      if (data.order.boxes && data.order.boxes.length > 0) {
+        setEditBoxes(data.order.boxes)
+      }
       setEditing(false)
       alert('✅ 更新成功')
     } catch (err) {
@@ -383,57 +463,187 @@ export default function OrderDetail() {
 
         {/* 货物信息 */}
         <div className="card">
-          <h2 className="font-bold text-lg mb-4 border-b pb-2">📦 货物信息</h2>
+          <div className="flex justify-between items-center mb-4 border-b pb-2">
+            <h2 className="font-bold text-lg">📦 货物信息</h2>
+            {editing && (
+              <button
+                type="button"
+                onClick={addBox}
+                className="text-sm px-3 py-1 rounded bg-purple-100 text-purple-700 hover:bg-purple-200"
+              >
+                + 添加箱子
+              </button>
+            )}
+          </div>
           
-          {boxes.length > 0 ? (
+          {editing ? (
+            // 编辑模式：显示箱子编辑表单
             <div className="space-y-4">
-              {boxes.map((box, index) => (
-                <div key={index} className="border rounded-lg p-3 bg-gray-50">
-                  <div className="font-medium text-gray-700 mb-2">箱子 {index + 1}</div>
-                  <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
-                    <div>尺寸: {box.length} × {box.width} × {box.height} cm</div>
-                    <div>单件重量: {box.weight} kg</div>
-                    <div>件数: {box.quantity} 件</div>
-                    <div>小计重量: {(box.weight * box.quantity).toFixed(2)} kg</div>
+              {editBoxes.map((box, index) => (
+                <div key={index} className="border rounded-lg p-4 bg-gray-50">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="font-medium text-gray-700">箱子 {index + 1}</span>
+                    {editBoxes.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeBox(index)}
+                        className="text-red-500 text-sm hover:text-red-700"
+                      >
+                        删除
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="label text-xs">长</label>
+                        <input
+                          type="number"
+                          className="input text-sm"
+                          value={box.length}
+                          onChange={(e) => handleBoxChange(index, 'length', e.target.value)}
+                          step="0.1"
+                          placeholder="cm"
+                        />
+                      </div>
+                      <div>
+                        <label className="label text-xs">宽</label>
+                        <input
+                          type="number"
+                          className="input text-sm"
+                          value={box.width}
+                          onChange={(e) => handleBoxChange(index, 'width', e.target.value)}
+                          step="0.1"
+                          placeholder="cm"
+                        />
+                      </div>
+                      <div>
+                        <label className="label text-xs">高</label>
+                        <input
+                          type="number"
+                          className="input text-sm"
+                          value={box.height}
+                          onChange={(e) => handleBoxChange(index, 'height', e.target.value)}
+                          step="0.1"
+                          placeholder="cm"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="label text-xs">单件重量</label>
+                        <input
+                          type="number"
+                          className="input text-sm"
+                          value={box.weight}
+                          onChange={(e) => handleBoxChange(index, 'weight', e.target.value)}
+                          step="0.01"
+                          placeholder="kg"
+                        />
+                      </div>
+                      <div>
+                        <label className="label text-xs">件数</label>
+                        <input
+                          type="number"
+                          className="input text-sm"
+                          value={box.quantity}
+                          onChange={(e) => handleBoxChange(index, 'quantity', e.target.value)}
+                          min="1"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
               
-              <div className="bg-purple-50 rounded-lg p-4">
-                <h3 className="font-medium text-purple-800 mb-3">📊 汇总</h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">总件数:</span>
-                    <span className="font-medium">{summary.totalQuantity} 件</span>
+              {/* 编辑模式下的汇总计算 */}
+              {(() => {
+                const editSummary = calcEditSummary()
+                const editVolumeWeight = editSummary.totalVolume / 5000
+                const editChargeWeight = Math.max(editSummary.totalWeight, editVolumeWeight)
+                return (
+                  <div className="bg-purple-50 rounded-lg p-4">
+                    <h3 className="font-medium text-purple-800 mb-3">📊 汇总计算</h3>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">总件数:</span>
+                        <span className="font-medium">{editSummary.totalQuantity} 件</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">总体积:</span>
+                        <span className="font-medium">{(editSummary.totalVolume / 1000000).toFixed(4)} m³</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">总重量:</span>
+                        <span className="font-medium">{editSummary.totalWeight.toFixed(2)} kg</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">体积重:</span>
+                        <span className="font-medium">{editVolumeWeight.toFixed(2)} kg</span>
+                      </div>
+                      <div className="col-span-2 flex justify-between pt-2 border-t border-purple-200 font-bold">
+                        <span className="text-purple-700">计费重量:</span>
+                        <span className="text-purple-700 text-xl">{editChargeWeight.toFixed(2)} kg</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">总体积:</span>
-                    <span className="font-medium">{(summary.totalVolume / 1000000).toFixed(4)} m³</span>
+                )
+              })()}
+            </div>
+          ) : (
+            // 非编辑模式：只读显示
+            boxes.length > 0 ? (
+              <div className="space-y-4">
+                {boxes.map((box, index) => (
+                  <div key={index} className="border rounded-lg p-3 bg-gray-50">
+                    <div className="font-medium text-gray-700 mb-2">箱子 {index + 1}</div>
+                    <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
+                      <div>尺寸: {box.length} × {box.width} × {box.height} cm</div>
+                      <div>单件重量: {box.weight} kg</div>
+                      <div>件数: {box.quantity} 件</div>
+                      <div>小计重量: {(box.weight * box.quantity).toFixed(2)} kg</div>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">总重量:</span>
-                    <span className="font-medium">{summary.totalWeight.toFixed(2)} kg</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">体积重:</span>
-                    <span className="font-medium">{volumeWeight.toFixed(2)} kg</span>
-                  </div>
-                  <div className="col-span-2 flex justify-between pt-2 border-t border-purple-200 font-bold">
-                    <span className="text-purple-700">计费重量:</span>
-                    <span className="text-purple-700 text-lg">{chargeWeight.toFixed(2)} kg</span>
+                ))}
+                
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <h3 className="font-medium text-purple-800 mb-3">📊 汇总</h3>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">总件数:</span>
+                      <span className="font-medium">{summary.totalQuantity} 件</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">总体积:</span>
+                      <span className="font-medium">{(summary.totalVolume / 1000000).toFixed(4)} m³</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">总重量:</span>
+                      <span className="font-medium">{summary.totalWeight.toFixed(2)} kg</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">体积重:</span>
+                      <span className="font-medium">{volumeWeight.toFixed(2)} kg</span>
+                    </div>
+                    <div className="col-span-2 flex justify-between pt-2 border-t border-purple-200 font-bold">
+                      <span className="text-purple-700">计费重量:</span>
+                      <span className="text-purple-700 text-lg">{chargeWeight.toFixed(2)} kg</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="space-y-2 text-gray-700">
-              <div>单件尺寸: {order.length} × {order.width} × {order.height} cm</div>
-              <div>件数: {order.quantity} 件</div>
-              <div>单件重量: {order.weight} kg</div>
-              <div className="pt-2 border-t mt-2">
-                <div>计费重量: {order.charge_weight?.toFixed(2)} kg</div>
+            ) : (
+              <div className="space-y-2 text-gray-700">
+                <div>单件尺寸: {order.length} × {order.width} × {order.height} cm</div>
+                <div>件数: {order.quantity} 件</div>
+                <div>单件重量: {order.weight} kg</div>
+                <div className="pt-2 border-t mt-2">
+                  <div>计费重量: {order.charge_weight?.toFixed(2)} kg</div>
+                </div>
               </div>
-            </div>
+            )
           )}
         </div>
 
