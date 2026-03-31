@@ -116,10 +116,9 @@ export default async function handler(req) {
     const updates = await req.json();
     updates.updated_at = new Date().toISOString();
     
-    // 不允许更新主键和某些系统字段
-    delete updates.id;
-    delete updates.created_at;
-    delete updates.owner_id;
+    // 不允许更新的字段（主键、系统字段、关联查询字段）
+    const forbiddenFields = ['id', 'created_at', 'owner_id', 'owner', 'owner_name'];
+    forbiddenFields.forEach(field => delete updates[field]);
 
     // 报价相关字段的权限控制
     const quoteFields = ['quote_price', 'carrier'];
@@ -145,7 +144,12 @@ export default async function handler(req) {
       .single();
 
     if (error) {
-      return new Response(JSON.stringify({ error: '更新失败' }), { status: 500, headers });
+      console.error('Supabase update error:', error);
+      return new Response(JSON.stringify({ 
+        error: '更新失败: ' + (error.message || '未知错误'),
+        details: error.details || null,
+        hint: error.hint || null
+      }), { status: 500, headers });
     }
 
     return new Response(JSON.stringify({ order: updated }), { status: 200, headers });
