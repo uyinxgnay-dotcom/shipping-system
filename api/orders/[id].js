@@ -115,6 +115,11 @@ export default async function handler(req) {
 
     const updates = await req.json();
     updates.updated_at = new Date().toISOString();
+    
+    // 不允许更新主键和某些系统字段
+    delete updates.id;
+    delete updates.created_at;
+    delete updates.owner_id;
 
     // 报价相关字段的权限控制
     const quoteFields = ['quote_price', 'carrier'];
