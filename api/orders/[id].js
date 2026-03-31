@@ -95,14 +95,18 @@ export default async function handler(req) {
 
   // PUT - 更新订单
   if (req.method === 'PUT') {
-    const { data: orderCheck } = await supabase
+    const { data: orderCheck, error: checkError } = await supabase
       .from('orders')
       .select('owner_id, quote_locked')
       .eq('id', id)
       .single();
 
-    if (!orderCheck) {
-      return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+    if (checkError) {
+      if (checkError.code === 'PGRST116') {
+        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+      }
+      console.error('查询订单失败:', checkError);
+      return new Response(JSON.stringify({ error: '查询订单失败: ' + checkError.message }), { status: 500, headers });
     }
 
     if (user.role !== 'admin' && orderCheck.owner_id !== user.id) {
@@ -144,14 +148,17 @@ export default async function handler(req) {
 
   // DELETE - 删除订单
   if (req.method === 'DELETE') {
-    const { data: orderCheck } = await supabase
+    const { data: orderCheck, error: checkError } = await supabase
       .from('orders')
       .select('owner_id')
       .eq('id', id)
       .single();
 
-    if (!orderCheck) {
-      return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+    if (checkError) {
+      if (checkError.code === 'PGRST116') {
+        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+      }
+      return new Response(JSON.stringify({ error: '查询订单失败' }), { status: 500, headers });
     }
 
     if (user.role !== 'admin' && orderCheck.owner_id !== user.id) {
@@ -171,14 +178,17 @@ export default async function handler(req) {
   if (req.method === 'POST') {
     // 确认下单
     if (action === 'confirm') {
-      const { data: order } = await supabase
+      const { data: order, error: orderError } = await supabase
         .from('orders')
         .select('*')
         .eq('id', id)
         .single();
 
-      if (!order) {
-        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+      if (orderError) {
+        if (orderError.code === 'PGRST116') {
+          return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+        }
+        return new Response(JSON.stringify({ error: '查询订单失败' }), { status: 500, headers });
       }
 
       if (order.status !== 'quote') {
@@ -218,14 +228,17 @@ export default async function handler(req) {
         return new Response(JSON.stringify({ error: '只有管理员可以发货' }), { status: 403, headers });
       }
 
-      const { data: order } = await supabase
+      const { data: order, error: orderError } = await supabase
         .from('orders')
         .select('*')
         .eq('id', id)
         .single();
 
-      if (!order) {
-        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+      if (orderError) {
+        if (orderError.code === 'PGRST116') {
+          return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+        }
+        return new Response(JSON.stringify({ error: '查询订单失败' }), { status: 500, headers });
       }
 
       if (order.status !== 'ordered') {
@@ -272,14 +285,17 @@ export default async function handler(req) {
         return new Response(JSON.stringify({ error: '只有管理员可以确认到达' }), { status: 403, headers });
       }
 
-      const { data: order } = await supabase
+      const { data: order, error: orderError } = await supabase
         .from('orders')
         .select('*')
         .eq('id', id)
         .single();
 
-      if (!order) {
-        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+      if (orderError) {
+        if (orderError.code === 'PGRST116') {
+          return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+        }
+        return new Response(JSON.stringify({ error: '查询订单失败' }), { status: 500, headers });
       }
 
       if (order.status !== 'shipped') {
@@ -317,14 +333,17 @@ export default async function handler(req) {
         return new Response(JSON.stringify({ error: '只有管理员可以锁定报价' }), { status: 403, headers });
       }
 
-      const { data: order } = await supabase
+      const { data: order, error: orderError } = await supabase
         .from('orders')
         .select('*')
         .eq('id', id)
         .single();
 
-      if (!order) {
-        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+      if (orderError) {
+        if (orderError.code === 'PGRST116') {
+          return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+        }
+        return new Response(JSON.stringify({ error: '查询订单失败' }), { status: 500, headers });
       }
 
       const { data: updated, error } = await supabase
@@ -351,14 +370,17 @@ export default async function handler(req) {
         return new Response(JSON.stringify({ error: '只有管理员可以解锁报价' }), { status: 403, headers });
       }
 
-      const { data: order } = await supabase
+      const { data: order, error: orderError } = await supabase
         .from('orders')
         .select('*')
         .eq('id', id)
         .single();
 
-      if (!order) {
-        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+      if (orderError) {
+        if (orderError.code === 'PGRST116') {
+          return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+        }
+        return new Response(JSON.stringify({ error: '查询订单失败' }), { status: 500, headers });
       }
 
       const { data: updated, error } = await supabase
