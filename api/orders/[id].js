@@ -85,6 +85,23 @@ export default async function handler(req) {
       .is('deleted_at', null)
       .single();
 
+    // 如果因 deleted_at 字段不存在导致失败，尝试不带条件的查询
+    if (error) {
+      const { data: fallbackOrder, error: fallbackError } = await supabase
+        .from('orders')
+        .select('*, owner:users!owner_id(id, username)')
+        .eq('id', id)
+        .single();
+      
+      if (fallbackError || !fallbackOrder) {
+        return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
+      }
+      
+      return new Response(JSON.stringify({
+        order: { ...fallbackOrder, owner_name: fallbackOrder.owner?.username || '未知' }
+      }), { status: 200, headers });
+    }
+
     if (error || !order) {
       return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
     }

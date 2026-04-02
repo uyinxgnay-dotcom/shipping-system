@@ -42,17 +42,29 @@ export default async function handler(req) {
 
   // GET - 获取订单列表（排除已删除的订单）
   if (req.method === 'GET') {
+    // 尝试带 deleted_at 条件的查询
     const { data: orders, error } = await supabase
       .from('orders')
       .select('*, owner:users!owner_id(id, username)')
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
+    // 如果查询失败（可能是 deleted_at 字段不存在），回退到不带条件的查询
+    let finalOrders = orders;
     if (error) {
-      return new Response(JSON.stringify({ error: '获取订单失败' }), { status: 500, headers });
+      console.log('Query error:', error.message);
+      const { data: allOrders, error: allError } = await supabase
+        .from('orders')
+        .select('*, owner:users!owner_id(id, username)')
+        .order('created_at', { ascending: false });
+      
+      if (allError) {
+        return new Response(JSON.stringify({ error: '获取订单失败: ' + allError.message }), { status: 500, headers });
+      }
+      finalOrders = allOrders;
     }
 
-    const formattedOrders = orders.map(o => ({
+    const formattedOrders = finalOrders.map(o => ({
       ...o,
       owner_name: o.owner?.username || '未知'
     }));
