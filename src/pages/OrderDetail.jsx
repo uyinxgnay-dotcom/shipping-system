@@ -105,7 +105,7 @@ export default function OrderDetail() {
       
       // 计算计费重量
       const summary = calcEditSummary()
-      const volumeWeight = summary.totalVolume / 5000
+      const volumeWeight = summary.totalVolume / 6000
       const chargeWeight = Math.max(summary.totalWeight, volumeWeight)
       
       // 过滤有效的箱子数据
@@ -149,7 +149,7 @@ export default function OrderDetail() {
   }
 
   const handleDelete = async () => {
-    if (!confirm('确定要删除这个订单吗？此操作不可恢复。')) return
+    if (!confirm('确定要删除这个订单吗？删除后可在回收站恢复。')) return
     
     try {
       const token = localStorage.getItem('token')
@@ -158,9 +158,10 @@ export default function OrderDetail() {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       
-      if (!res.ok) throw new Error('删除失败')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '删除失败')
       
-      alert('✅ 订单已删除')
+      alert('✅ 订单已移入回收站')
       navigate('/')
     } catch (err) {
       alert('❌ ' + err.message)
@@ -394,7 +395,7 @@ export default function OrderDetail() {
 
   const boxes = order.boxes || []
   const summary = calcSummary(boxes)
-  const volumeWeight = summary.totalVolume / 5000
+  const volumeWeight = summary.totalVolume / 6000
   const chargeWeight = Math.max(summary.totalWeight, volumeWeight)
 
   return (
@@ -466,7 +467,7 @@ export default function OrderDetail() {
           
           <div className="mt-3 text-sm text-gray-500">
             创建者: {order.owner_name || '未知'} | 
-            创建时间: {new Date(order.created_at).toLocaleString('zh-CN')}
+            创建时间: {new Date(order.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
           </div>
         </div>
 
@@ -827,7 +828,7 @@ export default function OrderDetail() {
               ) : (
                 <>
                   <button onClick={() => setEditing(true)} className="btn-secondary flex-1">编辑</button>
-                  <button onClick={handleDelete} className="bg-red-500 text-white py-3 rounded-lg font-medium hover:bg-red-600 flex-1">删除</button>
+                  <button onClick={handleDelete} className="bg-red-500 text-white py-3 rounded-lg font-medium hover:bg-red-600 flex-1">🗑️ 移入回收站</button>
                 </>
               )}
             </div>

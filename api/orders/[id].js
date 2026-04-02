@@ -76,12 +76,13 @@ export default async function handler(req) {
   const id = pathParts[pathParts.length - 1]?.split('?')[0];
   const action = url.searchParams.get('action');
 
-  // GET - 获取订单详情
+  // GET - 获取订单详情（排除已删除的订单）
   if (req.method === 'GET') {
     const { data: order, error } = await supabase
       .from('orders')
       .select('*, owner:users!owner_id(id, username)')
       .eq('id', id)
+      .is('deleted_at', null)
       .single();
 
     if (error || !order) {
@@ -155,11 +156,11 @@ export default async function handler(req) {
     return new Response(JSON.stringify({ order: updated }), { status: 200, headers });
   }
 
-  // DELETE - 删除订单
+  // DELETE - 软删除订单（移入回收站）
   if (req.method === 'DELETE') {
     const { data: orderCheck, error: checkError } = await supabase
       .from('orders')
-      .select('owner_id')
+      .select('owner_id, deleted_at')
       .eq('id', id)
       .single();
 
@@ -170,17 +171,26 @@ export default async function handler(req) {
       return new Response(JSON.stringify({ error: '查询订单失败' }), { status: 500, headers });
     }
 
+    // 已删除的订单不能再次删除
+    if (orderCheck.deleted_at) {
+      return new Response(JSON.stringify({ error: '该订单已在回收站中' }), { status: 400, headers });
+    }
+
     if (user.role !== 'admin' && orderCheck.owner_id !== user.id) {
       return new Response(JSON.stringify({ error: '无权删除此订单' }), { status: 403, headers });
     }
 
-    const { error } = await supabase.from('orders').delete().eq('id', id);
+    // 软删除：设置 deleted_at 时间戳
+    const { error } = await supabase
+      .from('orders')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id);
 
     if (error) {
       return new Response(JSON.stringify({ error: '删除失败' }), { status: 500, headers });
     }
 
-    return new Response(JSON.stringify({ success: true }), { status: 200, headers });
+    return new Response(JSON.stringify({ success: true, message: '订单已移入回收站' }), { status: 200, headers });
   }
 
   // POST - 特殊操作

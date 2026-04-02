@@ -6,6 +6,7 @@ import NewOrder from './pages/NewOrder'
 import OrderDetail from './pages/OrderDetail'
 import Users from './pages/Users'
 import Profile from './pages/Profile'
+import Trash from './pages/Trash'
 
 // 受保护的路由
 function PrivateRoute({ children, adminOnly = false }) {
@@ -57,6 +58,11 @@ function AppRoutes() {
       <Route path="/profile" element={
         <PrivateRoute>
           <Profile />
+        </PrivateRoute>
+      } />
+      <Route path="/trash" element={
+        <PrivateRoute adminOnly>
+          <Trash />
         </PrivateRoute>
       } />
     </Routes>

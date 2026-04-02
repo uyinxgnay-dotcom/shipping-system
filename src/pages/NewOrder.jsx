@@ -41,7 +41,7 @@ export default function NewOrder() {
     })
 
     const totalVolumeM = totalVolumeCm / 1000000
-    const volumeWeight = totalVolumeCm / 5000
+    const volumeWeight = totalVolumeCm / 6000
     const chargeWeight = Math.max(totalWeight, volumeWeight)
 
     return { totalVolumeM, totalWeight, volumeWeight, chargeWeight, totalQuantity }

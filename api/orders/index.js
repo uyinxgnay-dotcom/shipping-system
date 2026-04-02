@@ -40,11 +40,12 @@ export default async function handler(req) {
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // GET - 获取订单列表
+  // GET - 获取订单列表（排除已删除的订单）
   if (req.method === 'GET') {
     const { data: orders, error } = await supabase
       .from('orders')
       .select('*, owner:users!owner_id(id, username)')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) {

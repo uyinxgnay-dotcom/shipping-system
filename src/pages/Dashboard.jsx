@@ -7,6 +7,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [creatorFilter, setCreatorFilter] = useState('all')
   const { user, logout } = useAuth()
 
   useEffect(() => {
@@ -28,13 +29,30 @@ export default function Dashboard() {
     }
   }
 
+  // 获取所有创建人列表（用于筛选）
+  const creators = [...new Set(orders.map(o => o.owner_name))].filter(Boolean).sort()
+
   const filteredOrders = orders.filter(order => {
     const matchStatus = filter === 'all' || order.status === filter
+    const matchCreator = creatorFilter === 'all' || order.owner_name === creatorFilter
     const matchSearch = !search || 
       order.order_id.toLowerCase().includes(search.toLowerCase()) ||
       order.recipient_name.toLowerCase().includes(search.toLowerCase())
-    return matchStatus && matchSearch
+    return matchStatus && matchCreator && matchSearch
   })
+
+  // 格式化北京时间
+  const formatBeijingTime = (dateStr) => {
+    const date = new Date(dateStr)
+    return date.toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
 
   // 状态统计
   const stats = {
@@ -137,9 +155,14 @@ export default function Dashboard() {
             
             <div className="flex gap-2">
               {user?.role === 'admin' && (
-                <Link to="/users" className="btn-secondary text-sm">
-                  👥 用户管理
-                </Link>
+                <>
+                  <Link to="/users" className="btn-secondary text-sm">
+                    👥 用户管理
+                  </Link>
+                  <Link to="/trash" className="btn-secondary text-sm">
+                    🗑️ 回收站
+                  </Link>
+                </>
               )}
               <Link to="/new" className="btn-primary !w-auto text-sm">
                 + 新建订单
@@ -147,15 +170,25 @@ export default function Dashboard() {
             </div>
           </div>
           
-          {/* 搜索框 */}
-          <div>
+          {/* 搜索框和创建人筛选 */}
+          <div className="flex gap-3 flex-wrap">
             <input
               type="text"
-              className="input"
+              className="input flex-1"
               placeholder="搜索订单号或收件人..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            <select
+              className="input w-auto"
+              value={creatorFilter}
+              onChange={(e) => setCreatorFilter(e.target.value)}
+            >
+              <option value="all">全部创建人</option>
+              {creators.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -197,9 +230,9 @@ export default function Dashboard() {
                         <span className="ml-2 text-blue-600">🚚 {order.carrier}</span>
                       )}
                     </div>
-                  </div>
-                  <div className="text-right text-gray-400 text-sm">
-                    {new Date(order.created_at).toLocaleDateString('zh-CN')}
+                    <div className="text-gray-500 text-xs mt-1">
+                      👤 {order.owner_name || '未知'} | 📅 {formatBeijingTime(order.created_at)}
+                    </div>
                   </div>
                 </div>
               </Link>
