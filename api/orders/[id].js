@@ -102,10 +102,6 @@ export default async function handler(req) {
       }), { status: 200, headers });
     }
 
-    if (error || !order) {
-      return new Response(JSON.stringify({ error: '订单不存在' }), { status: 404, headers });
-    }
-
     return new Response(JSON.stringify({
       order: { ...order, owner_name: order.owner?.username || '未知' }
     }), { status: 200, headers });
